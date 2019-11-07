@@ -1,6 +1,9 @@
-[vtk图像处理](http://tanqingbo.com/2017/08/24/vtkPolyData%E6%95%B0%E6%8D%AE%E5%A4%84%E7%90%86/)
-[svd空间离散点合成平面集合](https://blog.csdn.net/yanxiaopan/article/details/68489560)
-[最小二乘法拟合平面](https://blog.csdn.net/zhouyelihua/article/details/46122977)
+[vtk图像处理](http://tanqingbo.com/2017/08/24/vtkPolyData%E6%95%B0%E6%8D%AE%E5%A4%84%E7%90%86/) 
+
+[svd空间离散点合成平面集合](https://blog.csdn.net/yanxiaopan/article/details/68489560) 
+
+[最小二乘法拟合平面](https://blog.csdn.net/zhouyelihua/article/details/46122977) 
+
 
 ```csharp
 using System;
