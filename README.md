@@ -333,3 +333,446 @@ namespace VirtualizingPPanel
 }
 ```
 
+```c++
+/*=========================================================================
+
+  Program:   Visualization Toolkit
+  Module:    HelloWorld.cxx
+
+  Copyright (c) Ken Martin, Will Schroeder, Bill Lorensen
+  All rights reserved.
+  See Copyright.txt or http://www.kitware.com/Copyright.htm for details.
+
+     This software is distributed WITHOUT ANY WARRANTY; without even
+     the implied warranty of MERCHANTABILITY or FITNESS FOR A PARTICULAR
+     PURPOSE.  See the above copyright notice for more information.
+
+=========================================================================*/
+//
+// This example...
+//
+#include<math.h>
+#include <vtkSmartPointer.h>
+#include <vtkVectorText.h>
+#include <vtkLinearExtrusionFilter.h>
+#include <vtkTriangleFilter.h>
+#include "vtkFeatureEdges.h"
+#include <vtkDataSetMapper.h>
+#include "vtkPolyData.h"
+#include <vtkActor.h>
+#include <vtkProperty.h>
+#include <vtkCamera.h>
+#include <vtkRenderWindow.h>
+#include <vtkSphereSource.h>
+#include <vtkRenderer.h>
+#include <vtkRenderWindowInteractor.h>
+#include <vtkPLYReader.h>
+#include <iostream>
+#include "vtkPLYReader.h"
+#include <vtkTransform.h>
+#include <vtkTransformPolyDataFilter.h>
+#include "vtkAppendPolyData.h"
+#include "vtkCleanPolyData.h"
+#include "vtkSelection.h"
+#include "vtkFillHolesFilter.h"
+#include <vtkCellData.h>
+#include <vtkDoubleArray.h>
+#include <vtkFloatArray.h>
+#include <vtkPoints.h>
+#include <vtkPolyDataNormals.h>
+#include <vtkPointData.h>
+#include <vtkSmartPointer.h>
+#include <vtkSphereSource.h>
+#include <vtkArrowSource.h>
+#include <vtkMaskPoints.h>
+#include <vtkGlyph3D.h>
+#include "vtkCutter.h"
+#include "vtkPlane.h"
+#include "vtkClipPolyData.h"
+#include "vtkStripper.h"
+#include "vtkCenterOfMass.h"
+#include "vtkMath.h"
+#include "vtkMergePoints.h"
+#include "vtkClipClosedSurface.h"
+#include "vtkPlaneCollection.h"
+#include <opencv2/highgui/highgui.hpp>  
+#include <opencv2/core/core.hpp> 
+#include<opencv2/core/mat.hpp>
+#include<opencv2/core/types_c.h>
+#include<opencv2/core/core_c.h>
+
+void cvFitPlane(const CvMat* points, float* plane);
+double DistancePointToPlane(double point[], double center[], double vector[]);
+int main(int, char*[])
+{
+  /*vtkRandomGraphSource* source = vtkRandomGraphSource::New();
+
+  vtkGraphLayoutView* view = vtkGraphLayoutView::New();
+  view->SetRepresentationFromInputConnection(
+    source->GetOutputPort());
+
+  view->ResetCamera();
+  view->Render();
+  view->GetInteractor()->Start();
+
+  source->Delete();
+  view->Delete();*/
+  //创建绘制器对象
+	// Create vector text
+	// C:\\Users\\zhangxinyan\\Desktop\\testobj4.ply   G:\\mesh\\30m10-new-cut-combine.ply
+	std::string filePath = "C:\\Users\\zhangxinyan\\Desktop\\testobj4.ply" ;
+	vtkSmartPointer<vtkPLYReader> reader =
+		vtkSmartPointer<vtkPLYReader>::New();
+	reader->SetFileName(filePath.c_str());
+	
+	
+	//获取边界
+	vtkSmartPointer<vtkFeatureEdges> featureEdges =
+		vtkSmartPointer<vtkFeatureEdges>::New();
+	featureEdges->SetInputConnection(reader->GetOutputPort());
+	featureEdges->BoundaryEdgesOn();
+	featureEdges->FeatureEdgesOff();
+	featureEdges->ManifoldEdgesOff();
+	featureEdges->NonManifoldEdgesOff();
+	featureEdges->Update();
+
+	
+
+	vtkSmartPointer<vtkCenterOfMass> centerOfMassFilter =
+		vtkSmartPointer<vtkCenterOfMass>::New();
+	centerOfMassFilter->SetInputData(reader->GetOutput());
+	centerOfMassFilter->SetUseScalarsAsWeights(false);
+	centerOfMassFilter->Update();
+	double readerCenter[3];
+	centerOfMassFilter->GetCenter(readerCenter);
+
+	//获取边缘polydata
+	vtkPolyData* edgeData = featureEdges->GetOutput();
+	//点数
+	cout <<"edge point number:"<< edgeData->GetNumberOfPoints() << endl;
+
+
+	//获取边缘点集
+	int edgePointCount = edgeData->GetNumberOfPoints();
+	CvMat* points_mat = cvCreateMat(edgePointCount, 3, CV_32FC1);
+	for (int i = 0; i < edgePointCount; i++)
+	{
+		double loc[3];
+		edgeData->GetPoint(i,loc);
+		points_mat->data.fl[i * 3 + 0] = loc[0];//x
+		points_mat->data.fl[i * 3 + 1] = loc[1];//  Y的坐标值
+		points_mat->data.fl[i * 3 + 2] = loc[2];//y
+	}
+	float plane12[4] = { 0 };//定义用来储存平面参数的数组 
+	cvFitPlane(points_mat, plane12);//调用方程
+	double plane12Spoint[] = { 1,2,0 };
+	plane12Spoint[2]=(-plane12[3] - plane12[0] - plane12[1] * 2) / plane12[2];
+
+	//投影点
+	vtkSmartPointer<vtkPlane> projectionPlane = vtkSmartPointer<vtkPlane>::New();
+	projectionPlane->SetOrigin(plane12Spoint);
+	projectionPlane->SetNormal(plane12[0], plane12[1], plane12[2]);
+	double projectionPoint[3] = {0,0,0};
+	projectionPlane->ProjectPoint(readerCenter,projectionPoint);
+	double extrudeVecter[3] = { 0,0,0 };
+	extrudeVecter[0] = readerCenter[0] - projectionPoint[0];
+	extrudeVecter[1] = readerCenter[1] - projectionPoint[1];
+	extrudeVecter[2] = readerCenter[2] - projectionPoint[2];
+	double twoPointsLength = sqrt((pow(extrudeVecter[0], 2) + pow(extrudeVecter[1], 2) + pow(extrudeVecter[2], 2)));
+	double extrudeUnitVector[3] = { (1 / twoPointsLength) * extrudeVecter[0],(1 / twoPointsLength) * extrudeVecter[1],(1 / twoPointsLength) * extrudeVecter[2] };
+
+
+	//normalVector=()
+	// Apply linear extrusion 
+	vtkSmartPointer<vtkLinearExtrusionFilter> extrude =
+		vtkSmartPointer<vtkLinearExtrusionFilter>::New();
+	extrude->SetInputConnection(featureEdges->GetOutputPort());
+
+	extrude->SetExtrusionTypeToNormalExtrusion();
+	extrude->SetVector(-extrudeUnitVector[0]*60, -extrudeUnitVector[1]*60, -extrudeUnitVector[2] * 60);
+	
+	extrude->Update();
+
+	//合并点
+	vtkSmartPointer<vtkAppendPolyData> appendExtrude = vtkSmartPointer<vtkAppendPolyData>::New();
+	appendExtrude->AddInputData(reader->GetOutput());
+	appendExtrude->AddInputData(extrude->GetOutput());
+	appendExtrude->Update();
+	vtkSmartPointer<vtkMergePoints> mergeExtrude = vtkSmartPointer<vtkMergePoints>::New();
+	mergeExtrude->InitPointInsertion(appendExtrude->GetOutput()->GetPoints(), appendExtrude->GetOutput()->GetBounds());
+	mergeExtrude->SetDataSet(appendExtrude->GetOutput());
+	mergeExtrude->BuildLocator();
+	mergeExtrude->Update();
+	//mergeExtrude->GetDataSet()
+	
+	
+
+	//平移挤边
+	/*vtkSmartPointer<vtkTransform> translate = vtkSmartPointer<vtkTransform>::New();
+	translate->Translate(0, 0, 0);
+	vtkSmartPointer<vtkTransformPolyDataFilter> transformFilter = vtkSmartPointer<vtkTransformPolyDataFilter>::New();
+	transformFilter->SetInputConnection(extrude->GetOutputPort());
+	transformFilter->SetTransform(translate);
+	transformFilter->Update();*/
+	//多边形转三角形
+	
+	////挤出边三角化
+	//vtkSmartPointer<vtkTriangleFilter> triangleFilter =
+	//	vtkSmartPointer<vtkTriangleFilter>::New();
+	//triangleFilter->SetInputConnection(extrude->GetOutputPort());
+	//////原模型三角化
+	//vtkSmartPointer<vtkTriangleFilter> inputTriangleFilter =
+	//	vtkSmartPointer<vtkTriangleFilter>::New();
+	//inputTriangleFilter->SetInputConnection(reader->GetOutputPort());
+
+																		
+	////移除重复点
+	//vtkSmartPointer<vtkCleanPolyData> cleanFilter =
+	//	vtkSmartPointer<vtkCleanPolyData>::New();
+	//cleanFilter->SetInputConnection(appendFilter->GetOutputPort());
+	//cleanFilter->Update();
+	//获取边缘边
+	/*vtkSmartPointer<vtkFeatureEdges> edgeCombined = vtkSmartPointer<vtkFeatureEdges>::New();
+	edgeCombined->SetInputConnection(appendFilter->GetOutputPort());
+	edgeCombined->BoundaryEdgesOn();
+	edgeCombined->FeatureEdgesOff();
+	edgeCombined->ManifoldEdgesOff();
+	edgeCombined->NonManifoldEdgesOff();
+	edgeCombined->Update();*/
+
+
+	//补洞
+	/*vtkSmartPointer<vtkFillHolesFilter> fillHolesFilter = vtkSmartPointer<vtkFillHolesFilter>::New();
+	fillHolesFilter->SetInputData(reader->GetOutput());
+	fillHolesFilter->SetHoleSize(100000.0);
+	fillHolesFilter->Update();*/
+
+	
+
+	//
+	double lowestPoint[3] = { 0,0,0 };
+	edgeData->GetPoint(0, lowestPoint);
+	double distence = DistancePointToPlane(lowestPoint, plane12Spoint, extrudeUnitVector);
+	for (int i = 1; i < edgeData->GetNumberOfPieces(); i++)
+	{
+		
+		double pointI[3] = { 0,0,0 };
+		edgeData->GetPoint(i, pointI);
+		if (DistancePointToPlane(pointI, plane12Spoint, extrudeUnitVector)<distence)
+		{
+			lowestPoint[0] = pointI[0];
+			lowestPoint[1] = pointI[1];
+			lowestPoint[2] = pointI[2];
+		}
+	}
+	//切平面
+
+	vtkSmartPointer<vtkPlane> cPlane = vtkSmartPointer<vtkPlane>::New();
+	
+	//设置裁剪中心
+	cPlane->SetOrigin(extrude->GetOutput()->GetCenter());
+	//cPlane->SetOrigin(lowestPoint);
+	//cPlane->SetNormal(plane12[0], plane12[1], plane12[2]);
+	cPlane->SetNormal(extrudeUnitVector);
+
+	vtkSmartPointer<vtkPlaneCollection> planes =
+		vtkSmartPointer<vtkPlaneCollection>::New();
+	planes->AddItem(cPlane);
+	//设置裁切 1
+	vtkSmartPointer<vtkClipPolyData> clipper = vtkSmartPointer<vtkClipPolyData>::New();
+	clipper->SetInputData(extrude->GetOutput());
+	clipper->SetClipFunction(cPlane);
+	clipper->SetValue(0);
+	clipper->Update();
+	
+	vtkSmartPointer<vtkClipClosedSurface> clipper2 =
+		vtkSmartPointer<vtkClipClosedSurface>::New();
+	clipper2->SetInputData(extrude->GetOutput());
+	clipper2->SetClippingPlanes(planes);
+	clipper2->SetActivePlaneId(0);
+	clipper2->Update();
+	//设置裁剪2
+
+	//切面补面
+
+
+	// Now extract feature edges
+	auto boundaryEdges = vtkSmartPointer<vtkFeatureEdges>::New();
+	boundaryEdges->SetInputData(clipper->GetOutput());
+	boundaryEdges->BoundaryEdgesOn();
+	boundaryEdges->FeatureEdgesOff();
+	boundaryEdges->NonManifoldEdgesOff();
+	boundaryEdges->ManifoldEdgesOff();
+
+	auto boundaryStrips = vtkSmartPointer<vtkStripper>::New();
+	boundaryStrips->SetInputConnection(boundaryEdges->GetOutputPort());
+	boundaryStrips->Update();
+
+	auto boundaryPoly = vtkSmartPointer<vtkPolyData>::New();
+	boundaryPoly->SetPoints(boundaryStrips->GetOutput()->GetPoints());
+	boundaryPoly->SetPolys(boundaryStrips->GetOutput()->GetLines());
+	//三角化
+	auto cutTriangles = vtkSmartPointer<vtkTriangleFilter>::New();
+	cutTriangles->SetInputData(boundaryPoly);
+	cutTriangles->Update();
+
+	//模型合并
+	vtkSmartPointer<vtkAppendPolyData> appendFilter = vtkSmartPointer<vtkAppendPolyData>::New();
+	appendFilter->AddInputData(reader->GetOutput());
+	//appendFilter->AddInputData(transformFilter->GetOutput());
+	appendFilter->AddInputData(clipper2->GetOutput());
+	appendFilter->AddInputData(cutTriangles->GetOutput());
+	appendFilter->Update();
+	
+
+	auto appendEdge = vtkSmartPointer<vtkFeatureEdges>::New();
+	appendEdge->AddInputConnection(appendFilter->GetOutputPort());
+	appendEdge->BoundaryEdgesOn();
+	appendEdge->FeatureEdgesOff();
+	appendEdge->NonManifoldEdgesOff();
+	appendEdge->ManifoldEdgesOff();
+	//查看模型法线方向
+	vtkSmartPointer<vtkPolyDataNormals> modelNormal = vtkSmartPointer<vtkPolyDataNormals>::New();
+	modelNormal->SetInputConnection(appendFilter->GetOutputPort());
+	modelNormal->SetComputeCellNormals(0);
+	modelNormal->SetComputePointNormals(1);
+	modelNormal->SetAutoOrientNormals(1);
+	modelNormal->SetSplitting(0);
+	modelNormal->Update();
+
+	vtkSmartPointer<vtkArrowSource> arrow = vtkSmartPointer<vtkArrowSource>::New();
+	arrow->Update();
+
+	vtkSmartPointer<vtkMaskPoints> mask = vtkSmartPointer<vtkMaskPoints>::New();
+	mask->SetInputConnection(modelNormal->GetOutputPort());
+	mask->SetMaximumNumberOfPoints(300);
+	mask->RandomModeOn();
+	mask->Update();
+
+	vtkSmartPointer<vtkGlyph3D> glyph = vtkSmartPointer<vtkGlyph3D>::New();
+	glyph->SetInputData(mask->GetOutput());
+	glyph->SetSourceData(arrow->GetOutput());//每一点用箭头代替
+	glyph->SetVectorModeToUseNormal();//设置向量显示模式和法向量一致
+	glyph->SetScaleFactor(5); //设置伸缩比例
+	glyph->Update();
+	/////////////////
+
+	vtkSmartPointer<vtkDataSetMapper> mapper =
+		vtkSmartPointer<vtkDataSetMapper>::New();
+	mapper->SetInputConnection(clipper2->GetOutputPort());
+
+	vtkSmartPointer<vtkDataSetMapper> mapperGlyph =
+		vtkSmartPointer<vtkDataSetMapper>::New();
+	mapperGlyph->SetInputConnection(glyph->GetOutputPort());
+
+	/*vtkSmartPointer<vtkDataSetMapper> inputMapper =
+		vtkSmartPointer<vtkDataSetMapper>::New();
+	mapper->SetInputConnection(inputTriangleFilter->GetOutputPort());*/
+
+	//渲染场景
+	vtkSmartPointer<vtkActor> actor =
+		vtkSmartPointer<vtkActor>::New();
+	actor->SetMapper(mapper);
+	//actor->GetProperty()->SetRepresentationToWireframe();
+	actor->GetProperty()->SetColor(0.8900, 0.8100, 0.3400);
+
+	vtkSmartPointer<vtkActor> glyphActor =
+		vtkSmartPointer<vtkActor>::New();
+	glyphActor->SetMapper(mapperGlyph);
+	glyphActor->GetProperty()->SetColor(1, 0, 0);
+
+	/*vtkSmartPointer<vtkActor> actor1 =
+		vtkSmartPointer<vtkActor>::New();
+	actor1->SetMapper(inputMapper);
+	actor1->GetProperty()->SetColor(0.8900, 0.8100, 0.3400);*/
+
+	//渲染窗口
+	vtkSmartPointer<vtkRenderWindow> renderWindow =
+		vtkSmartPointer<vtkRenderWindow>::New();
+
+	vtkSmartPointer<vtkRenderer> renderer =
+		vtkSmartPointer<vtkRenderer>::New();
+	renderer->SetBackground(.4, .5, .7);
+	renderer->AddActor(actor);
+	//renderer->AddActor(glyphActor);
+	renderer->ResetCamera();
+	// Generate an interesting view
+	renderer->ResetCamera();
+	renderer->GetActiveCamera()->Azimuth(30);
+	renderer->GetActiveCamera()->Elevation(30);
+	renderer->GetActiveCamera()->Dolly(1.0);
+	renderer->ResetCameraClippingRange();
+	
+
+	renderWindow->AddRenderer(renderer);
+
+	
+	//renderer->AddActor(actor1);
+
+	
+
+	vtkSmartPointer<vtkRenderWindowInteractor> renderWindowInteractor =
+		vtkSmartPointer<vtkRenderWindowInteractor>::New();
+	renderWindowInteractor->SetRenderWindow(renderWindow);
+	renderWindow->Render();
+	renderWindowInteractor->Start();
+
+	return EXIT_SUCCESS;
+  return 0;
+}
+
+
+
+
+void cvFitPlane(const CvMat* points, float* plane) {
+	// Estimate geometric centroid.
+	int nrows = points->rows;
+	int ncols = points->cols;
+	int type = points->type;
+	CvMat* centroid = cvCreateMat(1, ncols, type);
+	cvSet(centroid, cvScalar(0));
+	for (int c = 0; c < ncols; c++) {
+		for (int r = 0; r < nrows; r++)
+		{
+			centroid->data.fl[c] += points->data.fl[ncols * r + c];
+		}
+		centroid->data.fl[c] /= nrows;
+	}
+	// Subtract geometric centroid from each point.
+	CvMat* points2 = cvCreateMat(nrows, ncols, type);
+	for (int r = 0; r < nrows; r++)
+		for (int c = 0; c < ncols; c++)
+			points2->data.fl[ncols * r + c] = points->data.fl[ncols * r + c] - centroid->data.fl[c];
+	// Evaluate SVD of covariance matrix.
+	CvMat* A = cvCreateMat(ncols, ncols, type);
+	CvMat* W = cvCreateMat(ncols, ncols, type);
+	CvMat* V = cvCreateMat(ncols, ncols, type);
+	cvGEMM(points2, points, 1, NULL, 0, A, CV_GEMM_A_T);
+	cvSVD(A, W, NULL, V, CV_SVD_V_T);
+	// Assign plane coefficients by singular vector corresponding to smallest singular value.
+	plane[ncols] = 0;
+	for (int c = 0; c < ncols; c++) {
+		plane[c] = V->data.fl[ncols * (ncols - 1) + c];
+		plane[ncols] += plane[c] * centroid->data.fl[c];
+	}
+	// Release allocated resources.
+	cvReleaseMat(&centroid);
+	cvReleaseMat(&points2);
+	cvReleaseMat(&A);
+	cvReleaseMat(&W);
+	cvReleaseMat(&V);
+}
+
+double DistancePointToPlane(double point[], double center[], double vector[])
+{
+	vtkSmartPointer<vtkPlane> plane = vtkSmartPointer<vtkPlane>::New();
+	plane->SetOrigin(center);
+	plane->SetNormal(vector);
+	double ProjectPoint[3] = { 0,0,0 };
+	plane->ProjectPoint(point, ProjectPoint);
+	return vtkMath::Distance2BetweenPoints(point, ProjectPoint);
+}
+```
+
+
+
