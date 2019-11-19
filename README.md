@@ -776,3 +776,40 @@ double DistancePointToPlane(double point[], double center[], double vector[])
 
 
 
+```c++ 
+	for (int i = 0; i <= pointsNum; i++)
+	{
+		if (i!=pointsNum)
+		{
+			points->InsertPoint(i, edgeData->GetPoint(i));
+		}
+		else
+		{
+			points->InsertPoint(i, new double[3]{ 0,0,0 });
+		}
+		scalars->InsertTuple1(i, i);
+	}
+	for (size_t i = 0; i < points->GetNumberOfPoints(); i++)
+	{
+		auto loc = points->GetPoint(i);
+		cout << "x:" << loc[0] << "  y:" << loc[1] << "  z:" << loc[2] << endl;
+	}
+	for (int i = 0; i < pointsNum; i++)
+	{
+
+		if (i+1<pointsNum)
+		{
+			array<vtkIdType, 3> cellData = { {pointsNum ,i,i + 1 } };
+			polys->InsertNextCell( vtkIdType(3), cellData.data());
+		}
+		else
+		{
+			array<vtkIdType, 3> cellData = { {pointsNum ,i,0} };
+			polys->InsertNextCell(vtkIdType(3),cellData.data());
+		}
+	}
+```
+
+
+
+
